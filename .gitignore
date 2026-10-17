@@ -1,0 +1,13 @@
+build/
+release/
+local.properties
+*.iml
+.idea/
+.DS_Store
+__pycache__/
+*.pyc
+*.keystore
+*.jks
+*.pem
+.env
+.env.*

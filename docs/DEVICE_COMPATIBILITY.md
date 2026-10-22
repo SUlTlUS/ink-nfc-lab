@@ -1,4 +1,6 @@
-# 多设备与无 Root 可行性 · 2026-10-17
+# 多设备与无 Root 可行性 · 2026-10-22
+
+> 本文保留 0.5.0 的调研与历史验证。0.5.1 已加入实验性 NXP Q-Poll 后端：电脑 ADB Shell 或 App 内 Root；**尚未在 NXP 真机完成刷图验证**。当前 ST 无 Root 的 7A 设置/恢复已验证，但仍卡在系统 MIFARE 重选，不能描述为完整刷图。最新入口见仓库 README 与 [NFC 控制器调查](NFC_CONTROLLER_SURVEY.md)。
 
 ## 可交付的边界
 
@@ -38,7 +40,7 @@ App 没有简单把 `dada` 加进小米17的注入白名单。小米15当前可�
 | 小米15 Pro/Ultra 等同公共树机型 | 公共树声明覆盖这些设备 | 只列候选，不推断所有 SKU 同硬件 |
 | Pixel 9 Pro/Pro XL | NFCGate 项目记录 ST54L 的自测 | 相近硬件候选，不代表 7A 或本项目补丁兼容 |
 | Pixel 6/7 | NFCGate 记录 ST54J/ST54K | 同厂不同代，不复制 ST54L 的 RF 参数 |
-| Galaxy S21 / 小米12 Pro 等 NXP 机型 | NFCGate 记录 NXP 控制器，部分型号有不确定标记 | 需要独立 NXP 后端；目前仅标准路径 |
+| Galaxy S21 / 小米12 Pro 等 NXP 机型 | NFCGate 记录 NXP 控制器，部分型号有不确定标记 | 0.5.1 已有实验后端；这些机型均未实测 |
 
 [NFCGate 自测表](https://github.com/nfcgate/nfcgate/blob/v2/doc/Compatibility.md)仅证明它自己的捕获/中继/回放等功能，**没有测试本项目 7A 华为墨水屏唤醒**。这张表用于筛候选，不用于宣称已支持。
 

@@ -20,6 +20,8 @@ import android.provider.Settings;
 import android.view.View;
 import android.view.WindowManager;
 import android.net.Uri;
+import android.content.ClipData;
+import android.content.ClipboardManager;
 import android.widget.Button;
 import android.widget.LinearLayout;
 import android.widget.ImageView;
@@ -59,6 +61,7 @@ public final class MainActivity extends Activity implements NfcAdapter.ReaderCal
     private TextView device;
     private TextView logs;
     private TextView compatibilityState;
+    private TextView nfcChipView;
     private ScrollView logScroll;
     private Button inspect;
     private Button probe;
@@ -94,6 +97,8 @@ public final class MainActivity extends Activity implements NfcAdapter.ReaderCal
     private int selectedAlgorithm;
     private boolean standardOnly;
     private boolean standardSession;
+    private volatile NfcVendor.Kind nfcVendor = NfcVendor.Kind.UNKNOWN;
+    private volatile String nfcEvidence = "尚未检查";
     private final Runnable standardTimeout = () -> {
         if (!standardSession) return;
         if (this.reading) stopSession();
@@ -113,6 +118,7 @@ public final class MainActivity extends Activity implements NfcAdapter.ReaderCal
     private volatile int imageGeneration;
     private volatile boolean refreshComplete;
     private volatile Process rootProcess;
+    private volatile File nxpStopFile;
     private volatile Process compatibilityProcess;
     private volatile boolean compatibilityRunning;
     private int compatibilityRetries;
@@ -140,7 +146,8 @@ public final class MainActivity extends Activity implements NfcAdapter.ReaderCal
         nfc = NfcAdapter.getDefaultAdapter(this);
         sessionLog = new File(getFilesDir(), "last-session.txt");
         render();
-        log("Ink NFC Lab 0.5.0 / " + Build.MODEL + " / Android " + Build.VERSION.RELEASE);
+        rootWork.execute(this::detectNfcVendor);
+        log("Ink NFC Lab 0.5.1 / " + Build.MODEL + " / Android " + Build.VERSION.RELEASE);
         log("支持四色选图、编码、认证、D3上传与刷新；只在用户确认后写屏");
     }
 
@@ -208,6 +215,8 @@ public final class MainActivity extends Activity implements NfcAdapter.ReaderCal
         device = text("找准线圈位置，刷屏期间保持贴合。", 12, 0xffa9bec9);
         device.setPadding(0, dp(6), 0, dp(10));
         statusCard.addView(device);
+        nfcChipView = text("NFC 控制器 · 检测中", 11, ACCENT);
+        statusCard.addView(nfcChipView);
         transferProgress = new ProgressBar(this, null, android.R.attr.progressBarStyleHorizontal);
         transferProgress.setMax(100);
         transferProgress.setProgressTintList(android.content.res.ColorStateList.valueOf(ACCENT));
@@ -401,6 +410,37 @@ public final class MainActivity extends Activity implements NfcAdapter.ReaderCal
                 || new File(getFilesDir(), "polling.snapshot.rf").exists();
     }
 
+    private void detectNfcVendor() {
+        if (nfc == null) {
+            runOnUiThread(() -> nfcChipView.setText("NFC 控制器 · 本机无 NFC"));
+            return;
+        }
+        String path = "";
+        try { path = getPackageManager().getApplicationInfo("com.android.nfc", 0).sourceDir; }
+        catch (Exception ignored) {}
+        StringBuilder properties = new StringBuilder();
+        for (String key : new String[]{"ro.strongbox.model", "ro.vendor.nfc.chip", "ro.boot.nfc", "ro.vendor.nfc.model"}) {
+            try {
+                Process process = new ProcessBuilder("getprop", key).start();
+                if (!process.waitFor(1, TimeUnit.SECONDS)) { process.destroy(); continue; }
+                BufferedReader reader = new BufferedReader(new InputStreamReader(process.getInputStream(), StandardCharsets.UTF_8));
+                String value = reader.readLine();
+                if (value != null && !value.isEmpty()) properties.append(key).append('=').append(value).append(' ');
+            } catch (Exception ignored) {}
+        }
+        NfcVendor.Kind result = NfcVendor.identify(path, properties.toString());
+        if (result == NfcVendor.Kind.UNKNOWN && DeviceSupport.verifiedRootProfile(Build.DEVICE, Build.VERSION.SDK_INT))
+            result = NfcVendor.Kind.ST;
+        nfcVendor = result;
+        nfcEvidence = "NFC 包=" + path + "；属性=" + properties;
+        NfcVendor.Kind shown = result;
+        runOnUiThread(() -> {
+            if (nfcChipView == null || isDestroyed()) return;
+            nfcChipView.setText("NFC 控制器 · " + (shown == NfcVendor.Kind.NXP ? "NXP · ADB / Root"
+                    : shown == NfcVendor.Kind.ST ? "ST · 需要 Root" : "未能可靠识别 · 可手动选择"));
+        });
+    }
+
     private void showDiagnostics() {
         if (debugPanel.getParent() instanceof android.view.ViewGroup)
             ((android.view.ViewGroup) debugPanel.getParent()).removeView(debugPanel);
@@ -410,10 +450,11 @@ public final class MainActivity extends Activity implements NfcAdapter.ReaderCal
     }
 
     private String deviceReport() {
-        return "Ink NFC Lab 0.5.0\n品牌：" + Build.MANUFACTURER + "\n型号：" + Build.MODEL
+        return "Ink NFC Lab 0.5.1\n品牌：" + Build.MANUFACTURER + "\n型号：" + Build.MODEL
                 + "\n代号：" + Build.DEVICE + "\nAndroid：" + Build.VERSION.RELEASE + " / API " + Build.VERSION.SDK_INT
                 + "\nABI：" + Arrays.toString(Build.SUPPORTED_ABIS) + "\nNFC：" + (nfc != null ? "有" : "无")
-                + "\n当前路径：" + (usesRootBackend() ? "已验证 Root 配置" : "标准 ISO-DEP（无 Root）")
+                + "\n控制器：" + nfcVendor + "（" + nfcEvidence + "）"
+                + "\n当前路径：" + (usesRootBackend() ? "已验证 ST Root 配置" : "按控制器选择")
                 + "\n\n" + DeviceSupport.summary(Build.DEVICE, Build.VERSION.SDK_INT, nfc != null)
                 + "\n\n标准读卡不等于已能发射 7-bit 7A。未经适配的设备不会自动注入补丁或改射频。";
     }
@@ -533,6 +574,7 @@ public final class MainActivity extends Activity implements NfcAdapter.ReaderCal
             return;
         }
         readerAfterReady = mode.equals("probe") || mode.equals("upload");
+        uploadRequested = mode.equals("upload");
         busy = true;
         stopped = false;
         cancelled = false;
@@ -631,6 +673,8 @@ public final class MainActivity extends Activity implements NfcAdapter.ReaderCal
         cancelled = true;
         uploadRequested = false;
         Process process = rootProcess;
+        File stopMarker = nxpStopFile;
+        if (stopMarker != null) try { stopMarker.createNewFile(); } catch (Exception error) { log("NXP 停止标记失败：" + error); }
         if (process != null) requestStop(process);
         disableReader();
         state.setText(standardSession ? "正在停止标准 NFC 会话" : "正在停止并恢复");
@@ -856,16 +900,159 @@ public final class MainActivity extends Activity implements NfcAdapter.ReaderCal
             state.setText("请先选择图片");
             return;
         }
+        if (!standardOnly) {
+            if (nfcVendor == NfcVendor.Kind.NXP) { chooseNxpBackend(); return; }
+            if (nfcVendor == NfcVendor.Kind.ST) { chooseStBackend(); return; }
+            new AlertDialog.Builder(this).setTitle("NFC 控制器未能可靠识别")
+                    .setMessage("不会仅凭系统中存在配置文件判断厂商。可尝试 NXP Q-Poll，或使用电脑 PN532/PCR532 方案；未经验证的 ST 机型不能自动套用小米 17 补丁。")
+                    .setItems(new String[]{"尝试 NXP 路线", "标准 ISO-DEP（不唤醒）", "电脑 PN532/PCR532 项目"},
+                            (dialog, which) -> {
+                                if (which == 0) chooseNxpBackend();
+                                else if (which == 1) confirmStandardUpload();
+                                else openPn532Project();
+                            }).show();
+            return;
+        }
+        confirmStandardUpload();
+    }
+
+    private void chooseStBackend() {
+        String detail = usesRootBackend() ? "已验证小米 17 / ST54L Root 路线。" : "当前 ST 机型尚未验证 Root 兼容；不能直接套用小米 17 的底层补丁。";
+        new AlertDialog.Builder(this).setTitle("ST 控制器")
+                .setMessage(detail + "\n如不具备 Root 或机型尚未适配，可改用电脑 PN532/PCR532。")
+                .setPositiveButton(usesRootBackend() ? "使用 Root 刷写" : "了解", (dialog, which) -> {
+                    if (usesRootBackend()) confirmRootUpload();
+                })
+                .setNeutralButton("电脑方案", (dialog, which) -> openPn532Project())
+                .setNegativeButton("取消", null).show();
+    }
+
+    private void chooseNxpBackend() {
+        new AlertDialog.Builder(this).setTitle("NXP Q-Poll 刷写")
+                .setMessage("ADB Shell 不需要 Root，但需在电脑执行一次命令；Root 可由 App 直接启动。两条路线均会发送 NXP 私有 QTag 命令，成功发现驱动板后才发送 D1、图像与刷新指令。尚未在本机型实测，请保持贴合并留意恢复结果。")
+                .setPositiveButton("ADB Shell", (dialog, which) -> prepareNxpAdb())
+                .setNeutralButton("Root", (dialog, which) -> startNxpRoot())
+                .setNegativeButton("取消", null).show();
+    }
+
+    private File prepareNxpImage() throws Exception {
+        ImageCodec.PreparedImage frame = preparedImage;
+        if (frame == null) throw new IllegalStateException("请先准备图片");
+        File folder = getExternalFilesDir(null);
+        if (folder == null) throw new IllegalStateException("外部应用目录不可用，无法交给 ADB Shell");
+        File image = new File(folder, "nxp-image.bin");
+        try (FileOutputStream output = new FileOutputStream(image)) { output.write(frame.packed); }
+        File stop = new File(folder, "nxp-stop");
+        if (stop.exists() && !stop.delete()) throw new IllegalStateException("无法清除上次停止标记");
+        nxpStopFile = stop;
+        return image;
+    }
+
+    private void prepareNxpAdb() {
+        try {
+            File image = prepareNxpImage();
+            String stop = nxpStopFile.getAbsolutePath();
+            String command = "adb shell 'apk=$(pm path dev.inknfclab | head -n 1); apk=${apk#package:}; "
+                    + "CLASSPATH=\"$apk\" /system/bin/app_process /system/bin dev.inknfclab.NxpQPollWorker "
+                    + image.getAbsolutePath() + " " + stop + "'";
+            state.setText("NXP 图像已准备 · 等待 ADB Shell");
+            device.setText("在电脑终端执行弹窗中的命令。App 不会误报 ADB 刷屏成功；请以终端的 COMPLETE / END 为准。");
+            new AlertDialog.Builder(this).setTitle("在电脑执行 ADB 命令")
+                    .setMessage(command + "\n\n也可在源码仓库运行 tools/nxp-adb-refresh.sh。要中止可在电脑执行 adb shell touch '" + stop + "'。ADB Shell 需能读取 App 外部目录；如果被系统拒绝，请使用 Root 或电脑 PN532。")
+                    .setPositiveButton("复制命令", (dialog, which) -> {
+                        ClipboardManager clipboard = (ClipboardManager) getSystemService(CLIPBOARD_SERVICE);
+                        clipboard.setPrimaryClip(ClipData.newPlainText("NXP ADB 刷屏", command));
+                    }).setNegativeButton("关闭", null).show();
+            log("NXP_ADB_READY · " + image.getAbsolutePath());
+        } catch (Exception error) {
+            state.setText("ADB 图像准备失败");
+            device.setText(error.getMessage());
+            log("NXP_ADB_ERROR · " + error);
+        }
+    }
+
+    private void startNxpRoot() {
+        if (busy) return;
+        try {
+            File image = prepareNxpImage();
+            String command = "CLASSPATH='" + getPackageCodePath().replace("'", "'\\''")
+                    + "' /system/bin/app_process /system/bin dev.inknfclab.NxpQPollWorker '"
+                    + image.getAbsolutePath().replace("'", "'\\''") + "' '"
+                    + nxpStopFile.getAbsolutePath().replace("'", "'\\''") + "'";
+            busy = true;
+            stopped = cancelled = false;
+            setBusy(true);
+            state.setText("NXP Root · 等待驱动板");
+            rootWork.execute(() -> {
+                try {
+                    Process process = new ProcessBuilder("su", "-c", command).redirectErrorStream(true).start();
+                    rootProcess = process;
+                    Thread watchdog = new Thread(() -> {
+                        try {
+                            if (!process.waitFor(330, TimeUnit.SECONDS)) {
+                                File marker = nxpStopFile;
+                                if (marker != null) marker.createNewFile();
+                                if (!process.waitFor(10, TimeUnit.SECONDS)) process.destroy();
+                            }
+                        } catch (Exception error) { log("NXP_WATCHDOG · " + error); }
+                    }, "ink-nxp-watchdog");
+                    watchdog.setDaemon(true);
+                    watchdog.start();
+                    try (BufferedReader input = new BufferedReader(new InputStreamReader(process.getInputStream(), StandardCharsets.UTF_8))) {
+                        String line;
+                        while ((line = input.readLine()) != null) {
+                            log(line);
+                            String event = line;
+                            runOnUiThread(() -> {
+                                if (event.startsWith("NXP|COMPLETE|")) state.setText("NXP 刷屏完成");
+                                else if (event.startsWith("NXP|ERROR|")) { state.setText("NXP 刷写失败"); device.setText(event); }
+                                else if (event.startsWith("NXP|READY|")) state.setText("NXP QTag 已接受 · 等待驱动板");
+                                else if (event.startsWith("NXP|PROGRESS|")) state.setText(event.substring(13));
+                            });
+                        }
+                    }
+                    if (!process.waitFor(180, TimeUnit.SECONDS)) {
+                        nxpStopFile.createNewFile();
+                        if (!process.waitFor(10, TimeUnit.SECONDS)) process.destroy();
+                    }
+                    if (process.exitValue() != 0) runOnUiThread(() -> state.setText("NXP 会话未完成 · 请查看日志"));
+                } catch (Exception error) {
+                    log("NXP_ROOT_ERROR · " + error);
+                    runOnUiThread(() -> { state.setText("NXP Root 启动失败"); device.setText(error.toString()); });
+                } finally {
+                    rootProcess = null;
+                    nxpStopFile = null;
+                    busy = false;
+                    runOnUiThread(() -> { if (!isDestroyed()) setBusy(false); });
+                }
+            });
+        } catch (Exception error) {
+            state.setText("NXP 图像准备失败");
+            device.setText(error.getMessage());
+        }
+    }
+
+    private void openPn532Project() {
+        startActivity(new Intent(Intent.ACTION_VIEW, Uri.parse("https://github.com/solar2ain/ink-nfc-fmsc-by-pn532")));
+    }
+
+    private void confirmRootUpload() {
+        new AlertDialog.Builder(this).setTitle("确认覆盖墨水屏")
+                .setMessage("使用已验证的 ST Root 路线刷入当前预览。请保持线圈贴合直至刷新确认。")
+                .setNegativeButton("取消", null)
+                .setPositiveButton("确认刷图", (dialog, which) -> startHelper("upload")).show();
+    }
+
+    private void confirmStandardUpload() {
         new AlertDialog.Builder(this).setTitle("确认覆盖墨水屏")
                 .setMessage("当前算法：" + AlgorithmCatalog.name(preparedImage.algorithm)
-                        + "\n连接方式：" + (usesRootBackend() ? "已验证 Root 唤醒" : "标准 NFC（不能保证 7A 唤醒）")
+                        + "\n连接方式：标准 NFC（不能保证 7A 唤醒）"
                         + "\n将用当前四色点阵覆盖墨水屏，约476个数据包，传完后仍需等待屏幕刷新确认。\n\n请贴在已验证的线圈位置，期间保持不动。原图对照仅用于查看，不会作为发送数据。")
                 .setNegativeButton("取消", null)
                 .setPositiveButton("确认刷图", (dialog, which) -> {
                     uploadRequested = true;
-                    state.setText("准备 MIFARE 兼容拦截");
-                    if (usesRootBackend()) startHelper("upload");
-                    else startStandardSession(true);
+                    state.setText("等待标准 NFC 标签");
+                    startStandardSession(true);
                 }).show();
     }
 

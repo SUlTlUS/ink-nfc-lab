@@ -1,7 +1,8 @@
-<manifest xmlns:android="http://schemas.android.com/apk/res/android" package="dev.inknfclab" android:versionCode="12" android:versionName="0.5.0">
+<manifest xmlns:android="http://schemas.android.com/apk/res/android" package="dev.inknfclab" android:versionCode="13" android:versionName="0.5.1">
     <uses-sdk android:minSdkVersion="26" android:targetSdkVersion="35" />
     <uses-permission android:name="android.permission.NFC" />
     <uses-feature android:name="android.hardware.nfc" android:required="false" />
+    <queries><package android:name="com.android.nfc" /></queries>
     <application android:label="Ink NFC Lab" android:theme="@style/AppTheme" android:icon="@drawable/ic_launcher" android:allowBackup="false" android:supportsRtl="true">
         <activity android:name=".MainActivity" android:exported="true">
             <intent-filter>

@@ -1,11 +1,41 @@
 本仓库为脱敏后的 Android 实现。历史记录中的 UID 已替换为合成测试值，不包含原始手机日志或签名私钥。
 
+# Ink NFC Lab · 华为 NFC 四色墨水屏
+
+选择图片、预览四色点阵并刷入原厂驱动板。**目前只有小米 17 / ST54L / Root 路线完成真机刷屏验证**；NXP Q-Poll 为新增实验后端，其他机型不能仅凭芯片厂商推断可用。
+
+## NFC 厂商与兼容性
+
+| 控制器路线 | 本项目现状 | 所需权限与限制 |
+| --- | --- | --- |
+| ST（如当前小米 17 的 ST54L） | 小米 17 已完成 7A 唤醒、D1、传图和刷新；其他 ST 机型未适配 | 已验证后端需要 Root。小米 17 上 ADB Shell 可设置并恢复 7A，但系统随后重选 MIFARE，尚未实现完整免 Root 刷图。 |
+| NXP | 已加入 QTag/Q-Poll Shell 后端及 D1/传图流程，**尚无本项目 NXP 真机成功记录** | 可选择电脑 ADB Shell 或 App 内 Root；ROM 是否开放私有命令、是否真正发出 Q-Poll、能否获得 ISO-DEP 标签均需分别验证。ADB 方案目前不是纯手机操作。 |
+| 紫光青藤 THN31 等 | 仅有芯片/设备线索，没有 7A 或刷屏验证 | 需先确认实际控制器、系统接口和权限，不能照搬 ST/NXP 命令。 |
+| 普通 Android NFC / iPhone | 已激活 ISO-DEP 后才可能传 APDU；没有通用的公开 7-bit 7A 寻卡接口 | 知道 UID 不能跳过寻卡与激活。iOS 尚无本项目实现或兼容结论。 |
+
+机型证据、其他控制器厂商及核验等级见 [NFC 控制器调查](docs/NFC_CONTROLLER_SURVEY.md)；[多设备与免 Root 分析](docs/DEVICE_COMPATIBILITY.md)及 [小米 17 ADB 实验结论](docs/ADB_BACKEND_FINDINGS.md)说明为什么“能发命令”“读到 Tag”“完整刷屏”是不同结果。**不要将“小米系列”整体标为 NXP 或 ST，也不要把系统目录中有某厂商配置文件视为实际装配证据。**
+
+## 招募手机壳 3D 建模协作者
+
+欢迎会用 FreeCAD、Fusion 360、SolidWorks、Blender 等工具的朋友，一起设计适配这块 NFC 供电四色屏的可打印手机壳。希望从开孔、屏幕/驱动板固定、FPC 保护、线圈位置与手机 NFC 耦合入手，做出可复现、便于调整不同手机型号的模型。**目前没有经核验的完整机械尺寸或可直接打印的成品模型**，请不要依据照片估算并标为成品。
+
+有兴趣请到 [手机壳建模合作 Issue #1](https://github.com/wiwiwei/ink-nfc-lab/issues/1) 留言，说明你的手机型号、屏幕/板子版本、可提供的测量或试打印条件；不必公开设备序列号、卡 UID 或私人照片。具体协作清单见 [手机壳建模计划](docs/CASE_MODELING.md)。欢迎提交参数化源文件及试装反馈；我们会在 README 中署名贡献者，模型授权在合并前单独确认。
+
+## 0.5.1 NFC 控制器分流（实验性）
+
+- 首页显示识别到的 NFC 控制器厂商。只使用活动 NFC 包路径与明确的芯片属性；证据冲突或不足时显示“未能可靠识别”，允许手动尝试 NXP，不按品牌猜测，也不因系统中留有某个配置文件就判定芯片。
+- NXP 路线发送 QTag / Q-Poll 私有命令，Shell 进程接管 ReaderMode，发现 ISO-DEP 后复用本项目的 D1 校验、四色图像上传及刷新流程。可选 App 内 Root 启动，或由 App 准备图像后在电脑运行 `bash tools/nxp-adb-refresh.sh`（亦可复制 App 弹窗中的 ADB 命令）。**这不是无电脑、纯 App 的免 Root 方案**；ADB Shell 是否能读取 App 外部文件以及该 ROM 是否接受 QTag，都必须按设备验证。
+- NXP QTag 命令和 Shell ReaderMode 的设计参考 [ZhaoGY-N/huawei-nfc-eink-android-app](https://github.com/ZhaoGY-N/huawei-nfc-eink-android-app)；未直接嵌入该项目的 Java 文件或 Shizuku 库。App 当前未集成 Shizuku，ADB 路线需要电脑终端。
+- ST 路线仅小米 17 / 已验证系统使用现有 Root 后端；其他 ST 机型不会自动套用底层补丁。无 Root 时 App 提供 [电脑 PN532/PCR532 项目](https://github.com/solar2ain/ink-nfc-fmsc-by-pn532)入口。标准 ISO-DEP 仍可从调试连接设置手动选择，但不能保证唤醒。
+- NXP 后端是源码级实现，**尚未经过 NXP 真机刷屏验证**；编译通过不等于设备支持。刷图会覆盖屏幕，测试时应保持线圈耦合，终端出现 `NXP|COMPLETE|` 才表示收到刷新完成确认；`RESTORE_ERROR` 表示普通 NFC 恢复未确认，需要手动关闭再开启 NFC。
+- `NXP|READY|` 只说明 Android 私有 QTag API 返回成功，不证明射频端已发出或板子已响应 Q-Poll；只有后续 TAG / D1 / 完整刷新回执才能逐步证明链路。
+
 ## 上游、许可与下载
 
 - 主要上游：[kur0neko/huawei-epd-pn532](https://gitee.com/kur0neko/huawei-epd-pn532)。本项目改编其协议定义、D1 解析、四色编码及 D3 数据包布局，保留原有认证、上传、刷新与完成状态检查流程。
 - 本项目与主要上游采用相同的 **PolyForm Noncommercial 1.0.0**，仅按该许可证允许的用途使用；不是 MIT/Apache，也不表示允许任意商用。见 [LICENSE](LICENSE)、[NOTICE](NOTICE)。
 - 早期 PN532 参考项目：[solar2ain/ink-nfc-fmsc-by-pn532](https://github.com/solar2ain/ink-nfc-fmsc-by-pn532)。这不是本 Android App 的完整上游，也不代表其许可证与主要上游相同。
-- [最新 APK / Release](https://github.com/wiwiwei/ink-nfc-lab/releases/latest)。当前为实验性调试签名构建，密钥不公开；自行构建会生成自己的调试密钥，可能不能覆盖官方附件。
+- [APK / Releases](https://github.com/wiwiwei/ink-nfc-lab/releases)。0.5.1 为实验性调试签名构建；**已核对其签名与 v0.5.0 Release APK 不同，不能直接覆盖安装**。卸载旧版会清除其 App 私有数据，请先确认需要保留的内容。
 - 真机结果：小米 17 / Android 17 / Root，经典算法与原厂 APC 完成 476 包上传，DE 返回 `009000`，用户确认画面无异常；七算法 × 三模式图像编码自检通过。其他手机及免 Root 唤醒未验证。详见 [真机回归](docs/DEVICE_TEST-0.5.0.md)。
 - 构建和安全边界见 [PUBLIC_SOURCE.md](PUBLIC_SOURCE.md)。下文保留历史开发记录；与本节冲突时以本节及真机回归记录为准。
 

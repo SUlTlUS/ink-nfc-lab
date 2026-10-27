@@ -112,9 +112,8 @@ public final class VendorPollCli {
             } else {
                 Class<?> properties = Class.forName("android.os.SystemProperties");
                 Method get = properties.getMethod("get", String.class);
-                if (!Thn31Profile.supported((String) get.invoke(null, "ro.product.model"),
-                        (String) get.invoke(null, "persist.sys.nfc.chip_name"), android.os.Build.VERSION.SDK_INT))
-                    throw new IllegalStateException("Unverified device profile");
+                if (!Thn31Profile.supported((String) get.invoke(null, "persist.sys.nfc.chip_name")))
+                    throw new IllegalStateException("THN31 chip property required");
                 if ((Integer) api.getMethod("getState").invoke(adapter) != 3)
                     throw new IllegalStateException("System NFC must already be on");
                 if (!screenUnlocked())

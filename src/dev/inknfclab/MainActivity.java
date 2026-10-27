@@ -200,7 +200,7 @@ public final class MainActivity extends Activity implements NfcAdapter.ReaderCal
                 return;
             }
             new AlertDialog.Builder(this).setTitle("连接方式")
-                    .setItems(new String[]{"自动 · 仅已验证机型启用 Root 后端", "标准 NFC · 不请求 Root"}, (dialog, which) -> {
+                    .setItems(new String[]{"自动 · 按控制器选择连接方式", "标准 NFC · 不请求 Root"}, (dialog, which) -> {
                         standardOnly = which == 1;
                         connectionChoice.setText(standardOnly ? "连接方式 · 标准 NFC" : "连接方式 · 自动");
                         compatibilityState.setText(usesRootBackend() ? "Root 后端 · 下次会话生效" : "标准 NFC · 不请求 Root");
@@ -437,7 +437,7 @@ public final class MainActivity extends Activity implements NfcAdapter.ReaderCal
         runOnUiThread(() -> {
             if (nfcChipView == null || isDestroyed()) return;
             nfcChipView.setText("NFC 控制器 · " + (shown == NfcVendor.Kind.NXP ? "NXP · ADB / Root"
-                    : shown == NfcVendor.Kind.THN31 ? "THN31 · PLQ110 Root"
+                    : shown == NfcVendor.Kind.THN31 ? "THN31 · Root"
                     : shown == NfcVendor.Kind.ST ? "ST · 需要 Root" : "未能可靠识别 · 可手动选择"));
         });
     }
@@ -939,7 +939,7 @@ public final class MainActivity extends Activity implements NfcAdapter.ReaderCal
 
     private void chooseThn31Backend() {
         new AlertDialog.Builder(this).setTitle("THN31 Root 刷写")
-                .setMessage("仅适配 PLQ110 / Android 17 的已核对固件。将覆盖屏幕画面；请保持手机亮屏解锁及屏幕贴合。也可先仅读取 D1，不写图像。")
+                .setMessage("THN31 Root 路线不限制手机型号或 Android 版本，运行前会检查所需系统接口。将覆盖屏幕画面；请保持手机亮屏解锁及屏幕贴合。也可先仅读取 D1，不写图像。")
                 .setPositiveButton("确认覆盖并刷写", (dialog, which) -> startRootBackend(true, false))
                 .setNeutralButton("仅读 D1", (dialog, which) -> startRootBackend(true, true))
                 .setNegativeButton("取消", null).show();

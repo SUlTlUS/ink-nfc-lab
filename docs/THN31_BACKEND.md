@@ -1,11 +1,11 @@
-# PLQ110 / THN31 Root 后端
+# THN31 Root 后端
 
 此适配移植自 [kur0neko/huawei-epd-pn532](https://gitee.com/kur0neko/huawei-epd-pn532)
 的 Android 探针。保留原作者署名与 PolyForm Noncommercial 1.0.0 许可。
 
 ## 使用范围
 
-- 仅启用 `ro.product.model=PLQ110`、`persist.sys.nfc.chip_name=THN31`、Android API 37 的 Root 路线。
+- 根据 `persist.sys.nfc.chip_name=THN31` 启用 Root 路线，不检查手机型号或固定 Android API 版本。
 - NFC 必须已开启，手机保持亮屏解锁。`libnfc_nci_jni.so` 的目标符号、偏移和 16 字节机器码必须匹配移植来源的实机；不匹配时中止。
 - 首页按实时芯片属性识别 THN31。选择图片后点击刷入，在 THN31 弹窗选择“仅读 D1”或明确确认覆盖并刷写。停止/离开前台沿用辅助进程停止机制。
 - 不打开 `/dev/tms_nfc`，不刷写控制器固件，不改变发射功率，不安装屏幕驱动配方。
@@ -31,7 +31,8 @@ App 管理主机侧 NCI credit、DATA 分片/重组和 APDU 超时。`ImageTrans
 
 THN31 的 Q 轮询命令中没有显式 `7A` 或有效位数字段。源项目已获得屏幕应答、D1 和用户
 确认完整刷屏的功能证据；**没有仪器测量证明空口恰好是 7 位 `0x7A`**。不能将此适配
-推广为所有 THN31、所有 OPlus 手机或 NXP 设备均可用。
+推定所有 THN31、所有 OPlus 手机或 NXP 设备均已验证可用；是否运行取决于实际接口和库指纹，
+不以手机型号或 Android 版本白名单阻断。
 
 ## 会话与恢复
 
@@ -64,7 +65,7 @@ NFC 进程写入的受限接收文件。HAL write 成功只是本地接受，仍
 - NCI DATA 分片、重组、credit、476 个长 APDU 连续传输；超时/异常/取消不重发。
 - 实际接收文件的 credit/应答读取、拒绝损坏及非归属数据。
 - 排除过期发现、未收齐列表、多目标、其他系统命令及激活不匹配。
-- 会话锁争用、有限等待、取消及非争用错误。
+- 会话锁争用、有限等待、取消及非争用错误；芯片属性校验不接收型号或 SDK 参数。
 - Frida 脚本的库指纹、通知归属、接收捕获、租约失效透传及新令牌重置。
 - `ApduLink` 复用认证、476 个 D3 包和 D4/DE；认证失败及图像长度错误不会继续写入。
 

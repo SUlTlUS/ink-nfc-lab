@@ -4,10 +4,11 @@ import static dev.inknfclab.thn31.TestSupport.*;
 
 public final class Thn31ProfileTest {
     public static void main(String[] args) {
-        assertTrue(Thn31Profile.supported("PLQ110", "THN31", 37));
-        assertFalse(Thn31Profile.supported("PLQ110", "THN31", 36));
-        assertFalse(Thn31Profile.supported("other", "THN31", 37));
-        assertFalse(Thn31Profile.supported("PLQ110", "ST54L", 37));
+        // The gate accepts only the chip property; model and SDK are not inputs.
+        assertTrue(Thn31Profile.supported("THN31"));
+        assertFalse(Thn31Profile.supported("ST54L"));
+        assertFalse(Thn31Profile.supported("THN310"));
+        assertFalse(Thn31Profile.supported(null));
         System.out.println("Thn31ProfileTest: 4 passed");
     }
 }
